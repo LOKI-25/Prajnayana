@@ -5,14 +5,17 @@ from django.contrib.auth.models import User
 from django.contrib.auth import get_user_model
 from django.contrib.auth import authenticate, login
 from .serializers import * 
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, permission_classes
 from rest_framework.viewsets import ModelViewSet
+from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework.permissions import IsAuthenticated
+
 
 User = get_user_model()
 
 class RegisterView(APIView):
     def post(self, request):
-        serializer = RegisterSerializer(data=request.data)
+        serializer = RegisterSerializer(data=request.data)          
         if serializer.is_valid():
             serializer.save()
             return Response({"message": "User registered successfully"}, status=status.HTTP_201_CREATED)
@@ -22,14 +25,21 @@ class RegisterView(APIView):
 
 class LoginView(APIView):
     def post(self, request):
-        username = request.data.get('username')
-        password = request.data.get('password')
+        username = request.data.get("username")
+        password = request.data.get("password")
 
-        user = authenticate(request, username=username, password=password)
+        user = authenticate(username=username, password=password)
+
         if user is not None:
-            login(request, user)  
-            return Response({"message": "Logged in successfully"}, status=status.HTTP_200_OK)
-        return Response({"error": "Invalid credentials"}, status=status.HTTP_401_UNAUTHORIZED)
+            # Generate JWT tokens
+            refresh = RefreshToken.for_user(user)
+            return Response({
+                'message': 'Login successful',
+                "refresh": str(refresh),
+                "access": str(refresh.access_token),
+            }, status=status.HTTP_200_OK)
+        else:
+            return Response({"error": "Invalid credentials"}, status=status.HTTP_401_UNAUTHORIZED)
     
 
 class UserViewSet(ModelViewSet):
@@ -46,7 +56,8 @@ class UserViewSet(ModelViewSet):
 
     
 
-@api_view(['GET']) 
+@api_view(['GET'])
+@permission_classes([IsAuthenticated]) 
 def get_all_users(request):
     users = User.objects.all()
     serializer = UserSerializer(users, many=True)
