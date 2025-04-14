@@ -14,3 +14,13 @@ class DiscoveryQuestionAdmin(admin.ModelAdmin):
 class TestSessionAdmin(admin.ModelAdmin):
     pass
 
+@admin.register(Habits)
+class HabitsAdmin(admin.ModelAdmin):
+    pass
+
+@admin.register(HabitTracking)
+class HabitTrackingAdmin(admin.ModelAdmin):
+    pass
+
+
+

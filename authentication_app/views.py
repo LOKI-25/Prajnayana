@@ -9,6 +9,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.viewsets import ModelViewSet
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.permissions import IsAuthenticated
+from .models import *
 
 
 User = get_user_model()
@@ -17,8 +18,22 @@ class RegisterView(APIView):
     def post(self, request):
         serializer = RegisterSerializer(data=request.data)          
         if serializer.is_valid():
-            serializer.save()
-            return Response({"message": "User registered successfully"}, status=status.HTTP_201_CREATED)
+            # Save the user
+            user = serializer.save()
+            
+            # Generate tokens for the new user
+            refresh = RefreshToken.for_user(user)
+            
+            # Serialize the user data for the response
+            user_data = UserSerializer(user).data
+            
+            return Response({
+                "message": "User registered successfully",
+                "refresh": str(refresh),
+                "token": str(refresh.access_token),
+                "user": user_data
+            }, status=status.HTTP_201_CREATED)
+            
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -29,6 +44,9 @@ class LoginView(APIView):
         password = request.data.get("password")
 
         user = authenticate(username=username, password=password)
+        if user is not None:
+            print(user)
+            user_serialized=UserSerializer(user)
 
         if user is not None:
             # Generate JWT tokens
@@ -36,7 +54,8 @@ class LoginView(APIView):
             return Response({
                 'message': 'Login successful',
                 "refresh": str(refresh),
-                "access": str(refresh.access_token),
+                "token": str(refresh.access_token),
+                'user':user_serialized.data
             }, status=status.HTTP_200_OK)
         else:
             return Response({"error": "Invalid credentials"}, status=status.HTTP_401_UNAUTHORIZED)
@@ -63,3 +82,13 @@ def get_all_users(request):
     serializer = UserSerializer(users, many=True)
     return Response({'data':serializer.data, 'count':users.count()},status=status.HTTP_200_OK)
 
+
+
+
+
+
+@api_view(['GET'])
+def get_user(request):
+    user = request.user
+    serializer = UserSerializer(user)
+    return Response(serializer.data, status=status.HTTP_200_OK)

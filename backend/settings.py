@@ -25,7 +25,9 @@ SECRET_KEY = 'django-insecure-mce!9zmhb8cmk(2o2-*d$&&e@d-xgi=m3(b8&1&b5n3l%(_g2#
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['*']
+CORS_ALLOW_ALL_ORIGINS = True  # Development only!
+
 
 
 # Application definition
@@ -40,11 +42,14 @@ INSTALLED_APPS = [
     'rest_framework',
     'authentication_app',
     'rest_framework_simplejwt',
-    'django_rest_passwordreset',
+    # 'django_rest_passwordreset',
     'prajnayana_dashboard',
+    'drf_yasg',
+    'corsheaders',
 ]
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -115,7 +120,7 @@ REST_FRAMEWORK = {
 from datetime import timedelta
 
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=30),
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=300),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
     "ROTATE_REFRESH_TOKENS": True,
     "ALGORITHM": "HS256",
@@ -129,7 +134,7 @@ SIMPLE_JWT = {
 
 LANGUAGE_CODE = 'en-us'
 
-TIME_ZONE = 'UTC'
+TIME_ZONE = 'America/Chicago'
 
 USE_I18N = True
 

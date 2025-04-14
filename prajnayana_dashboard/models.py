@@ -49,7 +49,81 @@ class QuestionaireUserResponse(models.Model):
             '4': 4,  # Somewhat Agree
             '5': 5,  # Agree
         }
-        return score_map.get(self.selected_option, 0)
+        return score_map.get(self.selected_option, 1)
 
     def __str__(self):
         return f"{self.test_session.user.username} - {self.question.text} - {self.get_selected_option_display()}"
+    
+
+class Habits(models.Model):
+    habit = models.CharField(max_length=255)
+    user = models.ForeignKey(User,on_delete=models.CASCADE)
+    description = models.TextField()
+
+    def __str__(self):
+        return f"{self.user.username} - {self.habit}"
+    
+class HabitTracking(models.Model):
+    habit = models.ForeignKey(Habits,on_delete=models.CASCADE)
+    date = models.DateField(auto_now_add=True)
+    is_done = models.BooleanField(default=False)
+
+
+    def __str__(self):
+        return f"{self.user.username} - {self.habit}"
+
+
+class JournalEntry(models.Model):
+    MOOD_CHOICES = [
+        ("Happy", "Happy"),
+        ("Sad", "Sad"),
+        ("Neutral", "Neutral"),
+        ("Excited", "Excited"),
+        ("Stressed", "Stressed"),
+    ]
+    
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    date = models.DateField(auto_now_add=True) 
+    timestamp = models.DateTimeField(auto_now_add=True) 
+    mood = models.CharField(max_length=10, choices=MOOD_CHOICES, default="neutral")
+    content = models.TextField()
+
+    def __str__(self):
+        return f"Journal ({self.mood}) by {self.user} on {self.date} at {self.timestamp.time()}"
+
+class KnowledgeHubCategory(models.TextChoices):
+    MINDFULNESS_TECHNIQUES = "Mindfulness Techniques"
+    EMOTIONAL_RESILIENCE = "Emotional Resilience"
+    SELF_AWARENESS = "Self-Awareness"
+    PERSONAL_GROWTH = "Personal Growth"
+    COMMUNITY_STORIES = "Community Stories"
+
+
+class KnowledgeHub(models.Model): # Also knows as article
+    title = models.CharField(max_length=255)
+    content = models.TextField()
+    date_added = models.DateField(auto_now_add=True)
+    level = models.IntegerField(default=1)
+    image_url = models.URLField()
+    category = models.CharField(choices=KnowledgeHubCategory.choices, max_length=255)
+
+    def __str__(self):
+        return self.title
+    
+
+
+class VisionBoardCategory(models.TextChoices):
+    QUOTES = "Quotes"
+    AFFIRMATIONS = "Affirmations"
+    GOALS = "Goals"
+    PROMPTS = "Prompts"
+
+class VisionBoard(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    content = models.TextField()
+    category = models.CharField(choices=VisionBoardCategory.choices, max_length=255)
+    favorite = models.BooleanField(default=False)
+
+
+    def __str__(self):
+        return f"Vision Board by {self.user.username}"
