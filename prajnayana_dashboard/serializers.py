@@ -96,6 +96,15 @@ class KnowledgeHubSerializer(serializers.ModelSerializer):
         model = KnowledgeHub
         fields = '__all__'
 
+
+        
+class ArticleSerializer(serializers.ModelSerializer):
+    knowledgehub = KnowledgeHubSerializer(read_only=True)
+
+    class Meta:
+        model = Article
+        fields = '__all__'
+
 class VisionBoardSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
     class Meta:

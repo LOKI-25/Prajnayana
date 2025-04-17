@@ -10,6 +10,7 @@ router.register('habits', HabitsViewSet, basename='habit')
 router.register('habit_tracking', HabitTrackingViewSet, basename='habit_tracking')
 router.register('journal', JournalEntryViewSet, basename='journal')
 router.register('knowledge-hub', KnowledgeHubViewSet, basename='knowledge_hub')
+router.register('articles', ArticleViewSet, basename='article')
 router.register('vision-board', VisionBoardViewSet, basename='vision_board')
 
 urlpatterns = [

@@ -1,3 +1,4 @@
+import datetime
 from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated
 from .models import *
@@ -7,6 +8,8 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework import status
+from django.db.models import Q
+
 
 
 
@@ -71,6 +74,11 @@ class JournalEntryViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
+        # filter by date
+        search = self.request.GET.get('search', None)
+        if search:
+            search = datetime.datetime.strptime(search, '%Y-%m-%d').date()
+            return JournalEntry.objects.filter(user=self.request.user,date=search).order_by("-timestamp")
         return JournalEntry.objects.filter(user=self.request.user).order_by("-timestamp")
     
 class KnowledgeHubViewSet(viewsets.ModelViewSet):
@@ -78,7 +86,31 @@ class KnowledgeHubViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return KnowledgeHub.objects.filter(level__lte=self.request.user.level)
+        search = self.request.GET.get('search', None)
+        if search:
+            return KnowledgeHub.objects.filter(title__icontains=search)
+        return KnowledgeHub.objects.filter()
+    
+class ArticleViewSet(viewsets.ModelViewSet):
+    serializer_class = ArticleSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        request = self.request
+        search_query = request.GET.get('search', '')
+        category_query = request.GET.get('k_id', '')
+
+        if search_query:
+            return Article.objects.filter(
+                Q(title__icontains=search_query) |
+                Q(summary__icontains=search_query) |
+                Q(content__icontains=search_query) |
+                Q(tags__icontains=search_query)
+            ).distinct()
+
+        if category_query:
+            return Article.objects.filter(knowledgehub__id=category_query)
+        return Article.objects.all()
     
 
 class VisionBoardViewSet(viewsets.ModelViewSet):

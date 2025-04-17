@@ -23,4 +23,14 @@ class HabitTrackingAdmin(admin.ModelAdmin):
     pass
 
 
+@admin.register(KnowledgeHub)
+class KnowledgeHubAdmin(admin.ModelAdmin):
+    pass
 
+@admin.register(Article)
+class ArticleAdmin(admin.ModelAdmin):
+    pass
+
+@admin.register(JournalEntry)
+class JournalEntryAdmin(admin.ModelAdmin):
+    pass

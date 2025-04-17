@@ -100,15 +100,31 @@ class KnowledgeHubCategory(models.TextChoices):
 
 
 class KnowledgeHub(models.Model): # Also knows as article
-    title = models.CharField(max_length=255)
     content = models.TextField()
     date_added = models.DateField(auto_now_add=True)
     level = models.IntegerField(default=1)
     image_url = models.URLField()
-    category = models.CharField(choices=KnowledgeHubCategory.choices, max_length=255)
+    title = models.CharField(choices=KnowledgeHubCategory.choices, max_length=255)
 
     def __str__(self):
         return self.title
+    
+    
+class Article(models.Model):
+    title = models.CharField(max_length=255)
+    summary=models.TextField()
+    reflective_question_1 = models.CharField(max_length=300,null=True,blank=True)
+    reflective_question_2 = models.CharField(max_length=300,null=True,blank=True)
+    content = models.TextField()
+    date_added = models.DateField(auto_now_add=True)
+    level = models.IntegerField(default=1)
+    image_url = models.URLField()
+    knowledgehub = models.ForeignKey(KnowledgeHub,null=True,on_delete=models.SET_NULL)
+    tags = models.CharField(max_length=300,null=True,blank=True)
+
+    def __str__(self):
+        return self.title
+
     
 
 
