@@ -56,7 +56,7 @@ class HabitsViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return Habits.objects.filter(user=self.request.user)
+        return Habits.objects.filter(Q(user=self.request.user) | Q(user__isnull=True)).distinct()
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
@@ -67,6 +67,12 @@ class HabitTrackingViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
+        # filter by date
+        search = self.request.GET.get('search', None)
+        if search:
+            search = datetime.datetime.strptime(search, '%Y-%m-%d').date()
+            return HabitTracking.objects.filter(habit__user=self.request.user,date=search)
+        
         return HabitTracking.objects.filter(habit__user=self.request.user)
 
 class JournalEntryViewSet(viewsets.ModelViewSet):

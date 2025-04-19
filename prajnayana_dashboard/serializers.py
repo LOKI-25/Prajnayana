@@ -54,7 +54,7 @@ class HabitsSerializer(serializers.ModelSerializer):
 
 class HabitTrackingSerializer(serializers.ModelSerializer):
     habit_id = serializers.IntegerField(write_only=True)  
-    date = serializers.DateField(format="%Y-%m-%d", read_only=True)
+    date = serializers.DateField(format="%Y-%m-%d", required=False)
     user = serializers.StringRelatedField(read_only=True)
     habit = HabitsSerializer(read_only=True)  
 
@@ -81,6 +81,7 @@ class HabitTrackingSerializer(serializers.ModelSerializer):
 
 class JournalEntrySerializer(serializers.ModelSerializer):
     user = serializers.StringRelatedField()
+    date = serializers.DateField(format="%Y-%m-%d", required=False)
     class Meta:
         model = JournalEntry
         fields = ["id", "user", "date", "timestamp", "mood", "content"]

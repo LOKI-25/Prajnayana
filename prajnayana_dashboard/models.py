@@ -1,5 +1,6 @@
 from django.db import models
 from authentication_app.models import User
+from django.utils import timezone
 
 class DiscoveryQuestion(models.Model):
     text = models.TextField()
@@ -61,16 +62,16 @@ class Habits(models.Model):
     description = models.TextField()
 
     def __str__(self):
-        return f"{self.user.username} - {self.habit}"
+        return f" {self.habit}"
     
 class HabitTracking(models.Model):
     habit = models.ForeignKey(Habits,on_delete=models.CASCADE)
-    date = models.DateField(auto_now_add=True)
+    date = models.DateField(default=timezone.now)
     is_done = models.BooleanField(default=False)
 
 
     def __str__(self):
-        return f"{self.user.username} - {self.habit}"
+        return f" {self.habit.habit}"
 
 
 class JournalEntry(models.Model):
@@ -83,7 +84,7 @@ class JournalEntry(models.Model):
     ]
     
     user = models.ForeignKey(User, on_delete=models.CASCADE)
-    date = models.DateField(auto_now_add=True) 
+    date = models.DateField(default=timezone.now)
     timestamp = models.DateTimeField(auto_now_add=True) 
     mood = models.CharField(max_length=10, choices=MOOD_CHOICES, default="neutral")
     content = models.TextField()
