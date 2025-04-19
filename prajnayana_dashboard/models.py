@@ -130,10 +130,10 @@ class Article(models.Model):
 
 
 class VisionBoardCategory(models.TextChoices):
-    QUOTES = "Quotes"
-    AFFIRMATIONS = "Affirmations"
-    GOALS = "Goals"
-    PROMPTS = "Prompts"
+    QUOTE = "Quote"
+    AFFIRMATION = "Affirmation"
+    GOAL = "Goal"
+    PROMPT= "Prompt"
 
 class VisionBoard(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)

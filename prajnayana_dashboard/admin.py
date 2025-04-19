@@ -34,3 +34,7 @@ class ArticleAdmin(admin.ModelAdmin):
 @admin.register(JournalEntry)
 class JournalEntryAdmin(admin.ModelAdmin):
     pass
+
+@admin.register(VisionBoard)
+class VisionBoardAdmin(admin.ModelAdmin):
+    pass

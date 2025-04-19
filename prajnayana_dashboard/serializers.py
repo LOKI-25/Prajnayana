@@ -85,7 +85,7 @@ class JournalEntrySerializer(serializers.ModelSerializer):
     class Meta:
         model = JournalEntry
         fields = ["id", "user", "date", "timestamp", "mood", "content"]
-        read_only_fields = ["user", "date", "timestamp"]
+        read_only_fields = ["user", "timestamp"]
 
     def validate(self, attrs):
         attrs['user'] = self.context["request"].user
