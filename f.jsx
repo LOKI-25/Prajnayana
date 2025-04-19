@@ -1,574 +1,494 @@
 "use client"
-import { useState, useEffect } from "react"
-import { motion, AnimatePresence } from "framer-motion"
+import { useState, useEffect, useRef } from "react"
+import { motion } from "framer-motion"
 import Image from "next/image"
 import { Layout } from "@/components/Layout"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Plus, X, Check, Trash2, FlameIcon as Fire, Loader2 } from "lucide-react"
-// Import the GradientBackground component at the top of the file
-import { GradientBackground } from "@/components/ui/GradientBackground"
-import { Textarea } from "@/components/ui/textarea"
+import { PlusCircle, X, MessageSquare, BookOpen, Trophy, Brain, Edit, AlertTriangle } from "lucide-react"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogFooter,
+  DialogDescription,
+} from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import { Textarea } from "@/components/ui/textarea"
+import { GradientBackground } from "@/components/ui/GradientBackground"
 import { toast } from "@/hooks/use-toast"
-
+import api from "@/lib/api"
 /**
- * Helper functions for habit tracking
+ * Note type definitions
+ * Each type has specific styling and purpose to help users organize their thoughts
  */
-// Generate a unique ID for new habits
-const generateId = () => Math.random().toString(36).substring(2, 9)
-
-// Get a date key in YYYY-MM-DD format
-const getDayKey = (date) => {
-  return date.toISOString().split("T")[0]
+const NOTE_TYPES = {
+  AFFIRMATION: {
+    id: "AFFIRMATION",
+    label: "Affirmation",
+    category: "Affirmation",
+    color: "bg-blue-100 dark:bg-blue-900/30",
+    borderColor: "border-blue-300 dark:border-blue-700",
+    icon: MessageSquare,
+    emoji: "💬",
+  },
+  QUOTE: {
+    id: "QUOTE",
+    label: "Quote",
+    category: "Quote",
+    color: "bg-green-100 dark:bg-green-900/30",
+    borderColor: "border-green-300 dark:border-green-700",
+    icon: BookOpen,
+    emoji: "📚",
+  },
+  WIN: {
+    id: "WIN",
+    label: "Win & Achievement",
+    category: "Win",
+    color: "bg-yellow-100 dark:bg-yellow-900/30",
+    borderColor: "border-yellow-300 dark:border-yellow-700",
+    icon: Trophy,
+    emoji: "🌟",
+  },
+  CBT: {
+    id: "CBT",
+    label: "CBT Prompt",
+    category: "CBT",
+    color: "bg-purple-100 dark:bg-purple-900/30",
+    borderColor: "border-purple-300 dark:border-purple-700",
+    icon: Brain,
+    emoji: "🧠",
+  },
+}
+// Helper function to get type ID from category
+const getTypeFromCategory = (category) => {
+  switch (category) {
+    case "Affirmations":
+      return "AFFIRMATION"
+    case "Quotes":
+      return "QUOTE"
+    case "Wins":
+      return "WIN"
+    case "CBT":
+      return "CBT"
+    default:
+      return "AFFIRMATION"
+  }
 }
 
-// Get the days of the current week
-const getWeekDays = () => {
-  const today = new Date()
-  const day = today.getDay()
-  const diff = today.getDate() - day + (day === 0 ? -6 : 1) // Adjust when day is Sunday
-  const monday = new Date(today.setDate(diff))
-  const weekDays = []
-  for (let i = 0; i < 7; i++) {
-    const currentDay = new Date(monday)
-    currentDay.setDate(monday.getDate() + i)
-    weekDays.push({
-      date: currentDay,
-      dayKey: getDayKey(currentDay),
-      dayName: currentDay.toLocaleDateString("en-US", { weekday: "short" }),
-      dayNumber: currentDay.getDate(),
-      isToday: getDayKey(currentDay) === getDayKey(new Date()),
-    })
-  }
-  return weekDays
+// Helper function to get category from type ID
+const getCategoryFromType = (type) => {
+  return NOTE_TYPES[type]?.category || "Affirmations"
 }
-
-// Calculate the current streak for a habit
-const calculateStreak = (habitId, completions) => {
-  if (!completions || !habitId) return 0
-
-  const today = new Date()
-  let streak = 0
-
-  // Check if today is completed
-  const todayKey = getDayKey(today)
-  const isTodayCompleted = completions[todayKey]?.[habitId]
-
-  if (!isTodayCompleted) {
-    // Check if yesterday was completed
-    const yesterday = new Date(today)
-    yesterday.setDate(yesterday.getDate() - 1)
-    const yesterdayKey = getDayKey(yesterday)
-    if (!completions[yesterdayKey]?.[habitId]) {
-      return 0 // Streak broken
-    }
-  }
-
-  // Count consecutive days
-  for (let i = 0; i < 100; i++) {
-    // Limit to 100 days to avoid infinite loop
-    const checkDate = new Date(today)
-    checkDate.setDate(today.getDate() - i)
-    const checkKey = getDayKey(checkDate)
-    if (completions[checkKey]?.[habitId]) {
-      streak++
-    } else {
-      break
-    }
-  }
-  return streak
-}
-
 /**
- * HabitTrackerPage component
- * Allows users to create, track, and manage habits with daily completion tracking
+ * Ensures notes stay within the board boundaries
+ * Prevents notes from being dragged off-screen
  */
-export default function HabitTrackerPage() {
-  // State for habits and UI
-  const [habits, setHabits] = useState([])
-  const [defaultHabits, setDefaultHabits] = useState([])
-  const [newHabitName, setNewHabitName] = useState("")
-  const [newHabitDescription, setNewHabitDescription] = useState("")
-  const [weekDays, setWeekDays] = useState(getWeekDays())
-  const [isSelectingDefault, setIsSelectingDefault] = useState(false)
-  const [isCreatingCustom, setIsCreatingCustom] = useState(false)
+const ensureWithinBoundaries = (position, boardWidth, boardHeight) => {
+  const noteWidth = 200
+  const noteHeight = 150
+  const padding = 20
+  return {
+    x: Math.min(Math.max(padding, position.x), boardWidth - noteWidth - padding),
+    y: Math.min(Math.max(padding, position.y), boardHeight - noteHeight - padding),
+  }
+}
+/**
+ * Vision Board Component
+ *
+ * An interactive board that allows users to create, edit, and organize notes
+ * representing their goals, affirmations, achievements, and reflections.
+ */
+export default function VisionBoardPage() {
+  // State for notes and board
+  const [notes, setNotes] = useState([])
   const [isLoading, setIsLoading] = useState(true)
-  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [boardDimensions, setBoardDimensions] = useState({ width: 800, height: 600 })
+  const boardRef = useRef(null)
+  // State for adding new notes
+  const [newNoteContent, setNewNoteContent] = useState("")
+  const [newNoteType, setNewNoteType] = useState("AFFIRMATION")
+  const [isAddNoteOpen, setIsAddNoteOpen] = useState(false)
+  // State for editing notes
+  const [editingNote, setEditingNote] = useState(null)
+  const [editedContent, setEditedContent] = useState("")
+  const [editedType, setEditedType] = useState("AFFIRMATION")
+  // State for deleting notes
+  const [noteToDelete, setNoteToDelete] = useState(null)
+  // State for API errors
   const [error, setError] = useState(null)
-  const [completions, setCompletions] = useState({})
-  const [trackedHabitIds, setTrackedHabitIds] = useState(new Set())
-
-  // Fetch all available habits from API
-  const fetchAvailableHabits = async () => {
-    try {
-      // Get the token from localStorage
-      const token = localStorage.getItem("token")
-
-      // Set up headers with authentication
-      const headers = {
-        "Content-Type": "application/json",
-      }
-
-      // Add authorization header if token exists
-      if (token) {
-        headers["Authorization"] = `Bearer ${token}`
-      }
-
-      // Fetch all available habits
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/habits/`, {
-        headers,
-      })
-
-      if (!response.ok) {
-        throw new Error(`API error: ${response.status}`)
-      }
-
-      const data = await response.json()
-
-      // Transform the data into the format we need for default habits
-      const availableHabits = data.map((habit) => ({
-        id: habit.id,
-        name: habit.habit || "Unnamed Habit",
-        icon: getHabitIcon(habit.habit),
-        description: habit.description || "",
-      }))
-      console.log("Fetched habits", availableHabits)
-
-      // Remove duplicates based on habit ID
-      const uniqueHabits = Array.from(new Map(availableHabits.map((habit) => [habit.id, habit])).values())
-
-      console.log("unique habits", uniqueHabits)
-
-      setDefaultHabits(uniqueHabits)
-
-      return uniqueHabits
-    } catch (err) {
-      console.error("Error fetching available habits:", err)
-      return []
-    }
-  }
-
-  // Helper function to assign icons based on habit name
-  const getHabitIcon = (habitName) => {
-    if (!habitName) return "✅"
-
-    const name = habitName.toLowerCase()
-    if (name.includes("meditation") || name.includes("mindful")) return "🧘"
-    if (name.includes("exercise") || name.includes("workout") || name.includes("run")) return "🏃"
-    if (name.includes("journal") || name.includes("write") || name.includes("gratitude")) return "📝"
-    if (name.includes("read")) return "📚"
-    if (name.includes("water") || name.includes("drink")) return "💧"
-    if (name.includes("meal") || name.includes("food") || name.includes("eat")) return "🥗"
-    if (name.includes("sleep")) return "😴"
-
-    return "✅" // Default icon
-  }
-
-  // Fetch habit tracking data from API
-  const fetchHabitTracking = async () => {
-    try {
-      // Get the token from localStorage
-      const token = localStorage.getItem("token")
-
-      // Set up headers with authentication
-      const headers = {
-        "Content-Type": "application/json",
-      }
-
-      // Add authorization header if token exists
-      if (token) {
-        headers["Authorization"] = `Bearer ${token}`
-      }
-
-      // Fetch habit tracking data
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/habit_tracking/`, {
-        headers,
-      })
-
-      if (!response.ok) {
-        throw new Error(`API error: ${response.status}`)
-      }
-
-      const data = await response.json()
-      return data
-    } catch (err) {
-      console.error("Error fetching habit tracking:", err)
-      return []
-    }
-  }
-
-  // Fetch habits and tracking data
-  const fetchHabits = async () => {
-    setIsLoading(true)
-    setError(null)
-
-    try {
-      // First, fetch all available habits
-      const availableHabits = await fetchAvailableHabits()
-
-      // Then, fetch habit tracking data
-      const trackingData = await fetchHabitTracking()
-
-      // Process the tracking data
-      const habitMap = new Map() // Map to store unique habits
-      const completionMap = {} // Map to store completions by date and habit ID
-      const trackedIds = new Set() // Set to track which habit IDs are already being tracked
-
-      // Process each habit tracking entry
-      trackingData.forEach((entry) => {
-        const habitData = entry.habit
-        const habitId = habitData.id
-        const date = entry.date
-        const isDone = entry.is_done
-
-        // Add habit to map if not already there
-        if (!habitMap.has(habitId)) {
-          habitMap.set(habitId, {
-            id: habitId,
-            name: habitData.habit || "Unnamed Habit",
-            description: habitData.description || "",
-            user: habitData.user,
-            icon: getHabitIcon(habitData.habit),
-            streak: 0,
-          })
+  /**
+   * Generates a position for a new note with minimal overlap with existing notes
+   */
+  const generatePosition = (existingNotes = []) => {
+    // Note dimensions
+    const noteWidth = 200
+    const noteHeight = 150
+    const padding = 20
+    // Calculate safe area within board
+    const minX = padding
+    const minY = padding
+    const maxX = boardDimensions.width - noteWidth - padding
+    const maxY = boardDimensions.height - noteHeight - padding
+    // Try to find a position with minimal overlap (max 10 attempts)
+    let bestPosition = { x: 0, y: 0 }
+    let minOverlap = Number.MAX_VALUE
+    for (let attempt = 0; attempt < 10; attempt++) {
+      // Generate random position
+      const randomX = minX + Math.random() * (maxX - minX)
+      const randomY = minY + Math.random() * (maxY - minY)
+      const position = { x: randomX, y: randomY }
+      // Check overlap with existing notes
+      let totalOverlap = 0
+      for (const note of existingNotes) {
+        const dx = Math.abs(note.position.x - position.x) - noteWidth
+        const dy = Math.abs(note.position.y - position.y) - noteHeight
+        if (dx < 0 && dy < 0) {
+          totalOverlap += Math.abs(dx * dy) // Area of overlap
         }
-
-        // Track this habit ID
-        trackedIds.add(habitId)
-
-        // Add completion data
-        if (!completionMap[date]) {
-          completionMap[date] = {}
-        }
-        completionMap[date][habitId] = isDone
-      })
-
-      // Convert the habit map to an array
-      const habitArray = Array.from(habitMap.values())
-
-      // Calculate streaks for each habit
-      habitArray.forEach((habit) => {
-        habit.streak = calculateStreak(habit.id, completionMap)
-      })
-
-      setHabits(habitArray)
-      setCompletions(completionMap)
-      setTrackedHabitIds(trackedIds)
-    } catch (err) {
-      console.error("Error fetching habits:", err)
-      setError("Failed to load habits. Please try again.")
-    } finally {
-      setIsLoading(false)
+      }
+      // Keep track of position with minimal overlap
+      if (totalOverlap < minOverlap) {
+        minOverlap = totalOverlap
+        bestPosition = position
+        // If we found a position with no overlap, use it immediately
+        if (totalOverlap === 0) break
+      }
     }
+    return bestPosition
   }
-
-  // Load habits on component mount
-  useEffect(() => {
-    fetchHabits()
-  }, [])
-
-  // Recalculate week days when component mounts
-  useEffect(() => {
-    setWeekDays(getWeekDays())
-  }, [])
-
-  // Add a new habit
-  const addHabit = async () => {
-    if (!newHabitName.trim()) return
-
-    setIsSubmitting(true)
+  /**
+   * Adds a new note to the board
+   */
+  const addNote = async () => {
+    if (!newNoteContent.trim()) return
 
     try {
-      // Get token from localStorage
-      const token = localStorage.getItem("token")
+      const position = generatePosition(notes)
 
-      // Set up headers with authentication
-      const headers = {
-        "Content-Type": "application/json",
-      }
-
-      // Add authorization header if token exists
-      if (token) {
-        headers["Authorization"] = `Bearer ${token}`
-      }
-
-      // Create new habit via API
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/habits/`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          habit: newHabitName.trim(),
-          description: newHabitDescription.trim() || "No description provided",
-        }),
+      // Create new note via API
+      const response = await api.post("/vision-board/", {
+        content: newNoteContent,
+        category: getCategoryFromType(newNoteType),
+        favorite: false,
+        position_x: position.x,
+        position_y: position.y,
       })
 
-      if (response.status === 401) {
-        toast({
-          variant: "destructive",
-          title: "Authentication required",
-          description: "Please log in to create habits.",
-        })
-        setIsSubmitting(false)
-        return
+      // Add the new note to state
+      const newNote = {
+        id: response.data.id,
+        content: response.data.content,
+        type: getTypeFromCategory(response.data.category),
+        position: {
+          x: response.data.position_x || position.x,
+          y: response.data.position_y || position.y,
+        },
+        favorite: response.data.favorite,
+        createdAt: new Date().toISOString(),
       }
 
-      if (!response.ok) {
-        throw new Error(`API error: ${response.status}`)
-      }
+      setNotes([...notes, newNote])
+      setNewNoteContent("")
+      setIsAddNoteOpen(false)
 
-      // Refresh habits list
-      await fetchHabits()
-
-      // Clear form
-      setNewHabitName("")
-      setNewHabitDescription("")
-      setIsCreatingCustom(false)
-
-      // Show success message
       toast({
-        title: "Habit created",
-        description: "Your new habit has been added successfully.",
+        title: "Note created",
+        description: "Your note has been added to the vision board.",
       })
     } catch (err) {
-      console.error("Error creating habit:", err)
-      setError("Failed to create habit. Please try again.")
-
+      console.error("Error creating note:", err)
+      setError("Failed to create note. Please try again.")
       toast({
         variant: "destructive",
         title: "Error",
-        description: "Failed to create habit. Please try again.",
+        description: "Failed to create note. Please try again.",
       })
-    } finally {
-      setIsSubmitting(false)
     }
   }
-
-  // Add a default habit
-  const addDefaultHabit = async (habit) => {
-    setIsSubmitting(true)
+  /**
+   * Saves changes to an edited note
+   */
+  const saveEditedNote = async () => {
+    if (!editingNote || !editedContent.trim()) return
 
     try {
-      // Get token from localStorage
-      const token = localStorage.getItem("token")
+      // Update note via API
+      await api.put(`/vision-board/${editingNote.id}/`, {
+        content: editedContent,
+        category: getCategoryFromType(editedType),
+        favorite: editingNote.favorite,
+        position_x: editingNote.position.x,
+        position_y: editingNote.position.y,
+      })
 
-      // Set up headers with authentication
-      const headers = {
-        "Content-Type": "application/json",
-      }
-
-      // Add authorization header if token exists
-      if (token) {
-        headers["Authorization"] = `Bearer ${token}`
-      }
-
-      // Get today's date in YYYY-MM-DD format
-      const today = getDayKey(new Date())
-
-      // Add habit to tracking list via API
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/habit_tracking/`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          habit_id: habit.id,
-          date: today,
-          is_done: false,
+      // Update note in state
+      setNotes(
+        notes.map((note) => {
+          if (note.id === editingNote.id) {
+            return {
+              ...note,
+              content: editedContent,
+              type: editedType,
+              updatedAt: new Date().toISOString(),
+            }
+          }
+          return note
         }),
-      })
-
-      if (response.status === 401) {
-        toast({
-          variant: "destructive",
-          title: "Authentication required",
-          description: "Please log in to add habits to tracking.",
-        })
-        setIsSubmitting(false)
-        return
-      }
-
-      if (!response.ok) {
-        throw new Error(`API error: ${response.status}`)
-      }
-
-      // Refresh habits list
-      await fetchHabits()
-
-      // Close the default habits panel
-      setIsSelectingDefault(false)
-
-      // Show success message
-      toast({
-        title: "Habit added to tracking",
-        description: `${habit.name} has been added to your tracking list.`,
-      })
-    } catch (err) {
-      console.error("Error adding habit to tracking:", err)
-
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Failed to add habit to tracking. Please try again.",
-      })
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
-
-  // Delete a habit
-  const deleteHabit = async (habitId) => {
-    if (!confirm("Are you sure you want to delete this habit?")) return
-
-    setIsSubmitting(true)
-
-    try {
-      // Get token from localStorage
-      const token = localStorage.getItem("token")
-
-      // Set up headers with authentication
-      const headers = {
-        "Content-Type": "application/json",
-      }
-
-      // Add authorization header if token exists
-      if (token) {
-        headers["Authorization"] = `Bearer ${token}`
-      }
-
-      // Delete habit via API
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/habits/${habitId}/delete/`, {
-        method: "DELETE",
-        headers,
-      })
-
-      if (response.status === 401) {
-        toast({
-          variant: "destructive",
-          title: "Authentication required",
-          description: "Please log in to delete habits.",
-        })
-        return
-      }
-
-      if (!response.ok) {
-        throw new Error(`API error: ${response.status}`)
-      }
-
-      // Refresh habits list
-      await fetchHabits()
-
-      // Show success message
-      toast({
-        title: "Habit deleted",
-        description: "The habit has been deleted successfully.",
-      })
-    } catch (err) {
-      console.error("Error deleting habit:", err)
-
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Failed to delete habit. Please try again.",
-      })
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
-
-  // Toggle habit completion for a specific day
-  const toggleCompletion = async (habitId,habit_tracking_id ,dayKey) => {
-    setIsSubmitting(true)
-
-    try {
-      // Get token from localStorage
-      const token = localStorage.getItem("token")
-
-      // Set up headers with authentication
-      const headers = {
-        "Content-Type": "application/json",
-      }
-
-      // Add authorization header if token exists
-      if (token) {
-        headers["Authorization"] = `Bearer ${token}`
-      }
-
-      // Get current completion status
-      const isCurrentlyCompleted = completions[dayKey]?.[habitId] || false
-
-      // Update completion status via API
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/habit_tracking/${habit_tracking_id}/`, {
-        method: "PUT",
-        headers,
-        body: JSON.stringify({
-          date: dayKey,
-          habit_id: habitId,
-          is_done: !isCurrentlyCompleted,
-        }),
-      })
-
-      if (response.status === 401) {
-        toast({
-          variant: "destructive",
-          title: "Authentication required",
-          description: "Please log in to update your habits.",
-        })
-        return
-      }
-
-      if (!response.ok) {
-        throw new Error(`API error: ${response.status}`)
-      }
-
-      // Update local state
-      setCompletions((prev) => {
-        const newCompletions = { ...prev }
-        if (!newCompletions[dayKey]) {
-          newCompletions[dayKey] = {}
-        }
-        newCompletions[dayKey][habitId] = !isCurrentlyCompleted
-        return newCompletions
-      })
-
-      // Update streak for the habit
-      setHabits((prev) =>
-        prev.map((habit) =>
-          habit.id === habitId
-            ? {
-                ...habit,
-                streak: calculateStreak(habitId, {
-                  ...completions,
-                  [dayKey]: {
-                    ...completions[dayKey],
-                    [habitId]: !isCurrentlyCompleted,
-                  },
-                }),
-              }
-            : habit,
-        ),
       )
-    } catch (err) {
-      console.error("Error toggling habit completion:", err)
 
+      setEditingNote(null)
+      toast({
+        title: "Note updated",
+        description: "Your note has been updated successfully.",
+      })
+    } catch (err) {
+      console.error("Error updating note:", err)
       toast({
         variant: "destructive",
         title: "Error",
-        description: "Failed to update habit status. Please try again.",
+        description: "Failed to update note. Please try again.",
       })
-    } finally {
-      setIsSubmitting(false)
     }
   }
+  /**
+   * Measures board dimensions for positioning notes
+   */
+  useEffect(() => {
+    if (boardRef.current) {
+      const updateDimensions = () => {
+        const { width, height } = boardRef.current.getBoundingClientRect()
+        setBoardDimensions({ width, height })
+      }
+      // Initial measurement
+      updateDimensions()
+      // Re-measure on window resize
+      window.addEventListener("resize", updateDimensions)
+      // Re-measure after a short delay to ensure accurate dimensions
+      const timer = setTimeout(updateDimensions, 500)
+      return () => {
+        window.removeEventListener("resize", updateDimensions)
+        clearTimeout(timer)
+      }
+    }
+  }, [])
+  /**
+   * Loads notes from API
+   */
+  useEffect(() => {
+    const fetchNotes = async () => {
+      setIsLoading(true)
+      setError(null)
 
-  // Filter default habits to show only those not already being tracked
-  const filteredDefaultHabits = defaultHabits.filter(
-    (defaultHabit) => !habits.some((habit) => habit.id === defaultHabit.id),
-  )
+      try {
+        const response = await api.get("/vision-board/")
 
+        // Transform API data to match our component's format
+        const transformedNotes = response.data.map((note) => ({
+          id: note.id,
+          content: note.content,
+          type: getTypeFromCategory(note.category),
+          position: {
+            x: note.position_x || Math.random() * (boardDimensions.width - 220) + 20,
+            y: note.position_y || Math.random() * (boardDimensions.height - 170) + 20,
+          },
+          favorite: note.favorite,
+          createdAt: note.created_at || new Date().toISOString(),
+          updatedAt: note.updated_at,
+        }))
+
+        setNotes(transformedNotes)
+      } catch (err) {
+        console.error("Failed to fetch notes:", err)
+        setError("Failed to load vision board notes. Please try again.")
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: "Failed to load vision board notes.",
+        })
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchNotes()
+  }, [boardDimensions.width, boardDimensions.height])
+  /**
+   * Opens the delete confirmation dialog
+   */
+  const confirmDelete = (id) => {
+    setNoteToDelete(id)
+  }
+  /**
+   * Deletes a note after confirmation
+   */
+  const deleteNote = async () => {
+    if (noteToDelete) {
+      try {
+        // Delete note via API
+        await api.delete(`/vision-board/${noteToDelete}/`)
+
+        // Remove note from state
+        setNotes(notes.filter((note) => note.id !== noteToDelete))
+        setNoteToDelete(null)
+
+        toast({
+          title: "Note deleted",
+          description: "Your note has been removed from the vision board.",
+        })
+      } catch (err) {
+        console.error("Error deleting note:", err)
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: "Failed to delete note. Please try again.",
+        })
+      }
+    }
+  }
+  /**
+   * Cancels the delete operation
+   */
+  const cancelDelete = () => {
+    setNoteToDelete(null)
+  }
+  /**
+   * Updates a note's position after dragging
+   */
+  const updateNotePosition = async (id, position) => {
+    // Find the note to update
+    const noteToUpdate = notes.find((note) => note.id === id)
+    if (!noteToUpdate) return
+
+    // Ensure position is within boundaries
+    const safePosition = ensureWithinBoundaries(position, boardDimensions.width, boardDimensions.height)
+
+    try {
+      // Update note position via API
+      await api.put(`/vision-board/${id}/`, {
+        content: noteToUpdate.content,
+        category: getCategoryFromType(noteToUpdate.type),
+        favorite: noteToUpdate.favorite,
+        position_x: safePosition.x,
+        position_y: safePosition.y,
+      })
+
+      // Update note in state
+      setNotes(notes.map((note) => (note.id === id ? { ...note, position: safePosition } : note)))
+    } catch (err) {
+      console.error("Error updating note position:", err)
+      // Silently fail position updates to avoid disrupting the user experience
+    }
+  }
+  /**
+   * Starts editing a note
+   */
+  const startEditingNote = (note) => {
+    setEditingNote(note)
+    setEditedContent(note.content)
+    setEditedType(note.type)
+  }
+
+  /**
+   * Toggles a note's favorite status
+   */
+  const toggleFavorite = async (note) => {
+    try {
+      // Update note via API
+      await api.put(`/vision-board/${note.id}/`, {
+        content: note.content,
+        category: getCategoryFromType(note.type),
+        favorite: !note.favorite,
+        position_x: note.position.x,
+        position_y: note.position.y,
+      })
+
+      // Update note in state
+      setNotes(notes.map((n) => (n.id === note.id ? { ...n, favorite: !n.favorite } : n)))
+
+      toast({
+        title: note.favorite ? "Removed from favorites" : "Added to favorites",
+        description: `Note has been ${note.favorite ? "removed from" : "added to"} favorites.`,
+      })
+    } catch (err) {
+      console.error("Error toggling favorite status:", err)
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to update favorite status. Please try again.",
+      })
+    }
+  }
+  /**
+   * Generates example notes for first-time users
+   * Places notes in different corners to avoid overlap
+   */
+  const generateExampleNotes = (boardWidth, boardHeight) => {
+    const notes = []
+    // Example notes data - one for each category
+    const exampleData = [
+      {
+        content: "I am confident and capable in all situations.",
+        type: "AFFIRMATION",
+        createdAt: Date.now() - 7 * 24 * 60 * 60 * 1000, // 7 days ago
+      },
+      {
+        content: "The only way to do great work is to love what you do. - Steve Jobs",
+        type: "QUOTE",
+        createdAt: Date.now() - 5 * 24 * 60 * 60 * 1000, // 5 days ago
+      },
+      {
+        content: "Completed my first 5K run today!",
+        type: "WIN",
+        createdAt: Date.now() - 2 * 24 * 60 * 60 * 1000, // 2 days ago
+      },
+      {
+        content: "When I feel anxious, what evidence do I have that I can handle this situation?",
+        type: "CBT",
+        createdAt: Date.now() - 1 * 24 * 60 * 60 * 1000, // 1 day ago
+      },
+    ]
+    // Generate notes with positions in different corners to avoid overlap
+    for (const data of exampleData) {
+      let position
+      // Position notes in different corners
+      switch (data.type) {
+        case "AFFIRMATION":
+          position = { x: boardWidth * 0.1, y: boardHeight * 0.1 } // Top left
+          break
+        case "QUOTE":
+          position = { x: boardWidth * 0.6, y: boardHeight * 0.1 } // Top right
+          break
+        case "WIN":
+          position = { x: boardWidth * 0.1, y: boardHeight * 0.6 } // Bottom left
+          break
+        case "CBT":
+          position = { x: boardWidth * 0.6, y: boardHeight * 0.6 } // Bottom right
+          break
+        default:
+          position = {
+            x: Math.random() * (boardWidth - 220) + 20,
+            y: Math.random() * (boardHeight - 170) + 20,
+          }
+      }
+      const note = {
+        id: `note-${notes.length + 1}`,
+        content: data.content,
+        type: data.type,
+        position,
+        createdAt: data.createdAt,
+      }
+      notes.push(note)
+    }
+    return notes
+  }
   return (
     <Layout>
       <div className="bg-black text-off-white min-h-screen">
         {/* Hero Section */}
-        <section className="relative pt-32 pb-12 px-4 overflow-hidden bg-black">
+        <section className="relative pt-32 pb-16 px-4 overflow-hidden bg-black">
           <div className="absolute inset-0">
             <GradientBackground intensity="medium" />
           </div>
@@ -591,295 +511,278 @@ export default function HabitTrackerPage() {
                 />
               </div>
               <h1 className="text-3xl md:text-5xl font-bold mb-4 bg-gradient-to-r from-brand-orange to-brand-white bg-clip-text text-transparent">
-                Habit Tracker
+                Vision Board
               </h1>
               <p className="text-lg text-white/80 mb-8 max-w-2xl mx-auto">
-                Build consistency and transform your life through mindful habit cultivation
+                Visualize your aspirations and manifest your dreams with sticky notes
               </p>
             </motion.div>
           </div>
         </section>
 
-        {/* Habit Tracker Section */}
+        {/* Vision Board Section */}
         <section className="py-8 px-4">
-          <div className="container mx-auto max-w-4xl">
-            {/* Add Habit Button/Form */}
-            <div className="mb-8">
-              <AnimatePresence mode="wait">
-                {!isSelectingDefault && !isCreatingCustom ? (
-                  <motion.div
-                    key="options"
-                    initial={{ opacity: 0, y: -10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -10 }}
-                    className="flex flex-col gap-4"
-                  >
-                    <Button
-                      onClick={() => setIsSelectingDefault(true)}
-                      className="w-full bg-gradient-to-r from-rich-teal to-pale-cyan hover:opacity-90 text-white"
-                      disabled={isSubmitting || filteredDefaultHabits.length === 0}
-                    >
-                      <Plus size={18} className="mr-2" /> Choose from Templates
-                      {filteredDefaultHabits.length === 0 && " (All added)"}
-                    </Button>
-                    <Button
-                      onClick={() => setIsCreatingCustom(true)}
-                      className="w-full bg-white/10 hover:bg-white/20 text-white border border-white/20"
-                      disabled={isSubmitting}
-                    >
-                      <Plus size={18} className="mr-2" /> Create Custom Habit
-                    </Button>
-                  </motion.div>
-                ) : isSelectingDefault ? (
-                  <motion.div
-                    key="default-options"
-                    initial={{ opacity: 0, y: -10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -10 }}
-                    className="bg-gradient-to-br from-rich-teal/10 to-pale-cyan/10 backdrop-blur-sm border border-white/10 rounded-xl p-4 mb-4"
-                  >
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-lg font-semibold">Choose a Habit Template</h3>
-                      <button
-                        onClick={() => setIsSelectingDefault(false)}
-                        className="text-white/60 hover:text-white"
-                        disabled={isSubmitting}
-                      >
-                        <X size={18} />
-                      </button>
-                    </div>
-
-                    {filteredDefaultHabits.length > 0 ? (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">
-                        {filteredDefaultHabits.map((habit, index) => (
-                          <Button
-                            key={habit.id || index}
-                            onClick={() => addDefaultHabit(habit)}
-                            className="justify-start bg-white/10 hover:bg-white/20 text-left"
-                            disabled={isSubmitting}
-                          >
-                            <span className="mr-2">{habit.icon}</span> {habit.name}
-                          </Button>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="text-center py-4 text-white/60 mb-4">You've added all the available habits!</div>
-                    )}
-
-                    <Button
-                      onClick={() => {
-                        setIsSelectingDefault(false)
-                        setIsCreatingCustom(true)
-                      }}
-                      className="w-full bg-white/5 hover:bg-white/10 border border-white/10"
-                      disabled={isSubmitting}
-                    >
-                      Create Custom Habit Instead
-                    </Button>
-                  </motion.div>
-                ) : (
-                  <motion.div
-                    key="form"
-                    initial={{ opacity: 0, y: -10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -10 }}
-                    className="bg-gradient-to-br from-rich-teal/10 to-pale-cyan/10 backdrop-blur-sm border border-white/10 rounded-xl p-4 mb-4"
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <h3 className="text-lg font-semibold">Add Custom Habit</h3>
-                      <button
-                        onClick={() => setIsCreatingCustom(false)}
-                        className="text-white/60 hover:text-white"
-                        disabled={isSubmitting}
-                      >
-                        <X size={18} />
-                      </button>
-                    </div>
-
-                    <div className="space-y-4">
-                      <div>
-                        <Label htmlFor="habit-name">Habit Name</Label>
-                        <Input
-                          id="habit-name"
-                          type="text"
-                          placeholder="Enter habit name..."
-                          value={newHabitName}
-                          onChange={(e) => setNewHabitName(e.target.value)}
-                          className="bg-black/20 border-white/10 mt-1"
-                          disabled={isSubmitting}
-                        />
-                      </div>
-
-                      <div>
-                        <Label htmlFor="habit-description">Description (Optional)</Label>
-                        <Textarea
-                          id="habit-description"
-                          placeholder="Add a description for your habit..."
-                          value={newHabitDescription}
-                          onChange={(e) => setNewHabitDescription(e.target.value)}
-                          className="bg-black/20 border-white/10 min-h-[80px] mt-1"
-                          disabled={isSubmitting}
-                        />
-                      </div>
-
-                      <Button
-                        onClick={addHabit}
-                        className="w-full bg-rich-teal hover:bg-rich-teal/90"
-                        disabled={!newHabitName.trim() || isSubmitting}
-                      >
-                        {isSubmitting ? (
-                          <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Adding...
-                          </>
-                        ) : (
-                          "Add Habit"
-                        )}
-                      </Button>
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-
-            {/* Week Days Header */}
-            <div className="grid grid-cols-[1fr_auto] gap-4 mb-4">
-              <div className="pl-4">
-                <h3 className="text-lg font-semibold">Your Habits</h3>
+          <div className="container mx-auto">
+            {/* Header with title and add button */}
+            <div className="flex justify-between items-center mb-8">
+              <div>
+                <h2 className="text-2xl font-semibold">My Vision Board</h2>
+                <p className="text-white/60">Drag notes to arrange them as you like</p>
               </div>
-              <div className="grid grid-cols-7 gap-1">
-                {weekDays.map((day) => (
-                  <div
-                    key={day.dayKey}
-                    className={`w-10 h-10 flex flex-col items-center justify-center text-xs rounded-full ${day.isToday ? "bg-muted-coral/20 text-white" : "text-white/60"}`}
-                  >
-                    <span>{day.dayName}</span>
-                    <span className="font-bold">{day.dayNumber}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
 
-            {/* Loading State */}
-            {isLoading && (
-              <div className="flex justify-center py-12">
-                <Loader2 className="h-8 w-8 animate-spin text-rich-teal" />
-              </div>
-            )}
-
-            {/* Error State */}
-            {error && !isLoading && (
-              <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-6 mb-6 text-center">
-                <p className="text-white/90 mb-4">{error}</p>
-                {error.includes("Authentication required") ? (
+              {/* Add Note Dialog */}
+              <Dialog open={isAddNoteOpen} onOpenChange={setIsAddNoteOpen}>
+                <DialogTrigger asChild>
                   <Button
-                    onClick={() => (window.location.href = "/auth/login")}
-                    className="bg-rich-teal hover:bg-rich-teal/90"
+                    onClick={() => setIsAddNoteOpen(true)}
+                    className="bg-rich-teal hover:bg-rich-teal/90 flex items-center gap-2"
                   >
-                    Log In
+                    <PlusCircle size={18} />
+                    Add Note
                   </Button>
-                ) : (
-                  <Button onClick={fetchHabits} className="bg-rich-teal hover:bg-rich-teal/90">
-                    Try Again
-                  </Button>
-                )}
-              </div>
-            )}
-
-            {/* Habits List */}
-            <AnimatePresence>
-              {!isLoading && !error && habits.length === 0 ? (
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  className="bg-gradient-to-br from-rich-teal/5 to-pale-cyan/5 backdrop-blur-sm border border-white/10 rounded-xl p-8 text-center"
-                >
-                  <p className="text-white/60 mb-4">You haven't added any habits yet.</p>
-                  <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                    <Button onClick={() => setIsSelectingDefault(true)} className="bg-rich-teal hover:bg-rich-teal/90">
-                      <Plus size={18} className="mr-2" /> Add Template Habit
-                    </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-md bg-black border border-white/10 text-white">
+                  <DialogHeader>
+                    <DialogTitle className="text-xl">Add New Note</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4 py-4">
+                    {/* Note content textarea */}
+                    <div className="space-y-2">
+                      <Label htmlFor="note-content">Note Content</Label>
+                      <Textarea
+                        id="note-content"
+                        placeholder="Write your note here..."
+                        value={newNoteContent}
+                        onChange={(e) => setNewNoteContent(e.target.value)}
+                        className="min-h-[100px] bg-white/5 border-white/10"
+                      />
+                    </div>
+                    {/* Note type selection */}
+                    <div className="space-y-2">
+                      <Label>Note Type</Label>
+                      <RadioGroup
+                        value={newNoteType}
+                        onValueChange={(value) => setNewNoteType(value)}
+                        className="grid grid-cols-2 gap-2"
+                      >
+                        {Object.entries(NOTE_TYPES).map(([key, type]) => (
+                          <div
+                            key={key}
+                            className={`flex items-center space-x-2 p-3 rounded-md border ${newNoteType === key ? type.borderColor : "border-white/10"} ${type.color} transition-all duration-200`}
+                          >
+                            <RadioGroupItem value={key} id={`note-type-${key}`} />
+                            <Label htmlFor={`note-type-${key}`} className="flex items-center gap-2 cursor-pointer">
+                              <span>{type.emoji}</span>
+                              <span className="font-medium">{type.label}</span>
+                            </Label>
+                          </div>
+                        ))}
+                      </RadioGroup>
+                    </div>
+                  </div>
+                  <div className="flex justify-end">
                     <Button
-                      onClick={() => setIsCreatingCustom(true)}
-                      className="bg-white/10 hover:bg-white/20 border border-white/20"
+                      onClick={addNote}
+                      disabled={!newNoteContent.trim()}
+                      className="bg-rich-teal hover:bg-rich-teal/90"
                     >
-                      <Plus size={18} className="mr-2" /> Create Custom Habit
+                      Add to Board
                     </Button>
                   </div>
-                </motion.div>
+                </DialogContent>
+              </Dialog>
+            </div>
+
+            {/* Main Vision Board Canvas */}
+            <div
+              ref={boardRef}
+              className="relative h-[600px] bg-gradient-to-br from-black to-rich-teal/10 rounded-xl p-4 border border-white/10 overflow-hidden"
+            >
+              {/* Loading State */}
+              {isLoading ? (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-rich-teal"></div>
+                </div>
+              ) : notes.length === 0 ? (
+                /* Empty State */
+                <div className="absolute inset-0 flex flex-col items-center justify-center text-white/60">
+                  <div className="mb-4 p-4 rounded-full bg-white/5">
+                    <PlusCircle size={40} />
+                  </div>
+                  <p className="text-center max-w-md">
+                    Your vision board is empty. Add notes with affirmations, quotes, achievements, or CBT prompts to get
+                    started.
+                  </p>
+                </div>
               ) : (
-                !isLoading &&
-                !error &&
-                habits.map((habit) => (
-                  <motion.div
-                    key={habit.id}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -20 }}
-                    className="bg-gradient-to-br from-rich-teal/10 to-pale-cyan/10 backdrop-blur-sm border border-white/10 rounded-xl p-4 mb-4"
-                  >
-                    <div className="grid grid-cols-[1fr_auto] gap-4 items-center">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <h3 className="font-medium text-lg flex items-center">
-                            {habit.icon && <span className="mr-2">{habit.icon}</span>}
-                            {habit.name}
-                          </h3>
-                          {habit.description && <p className="text-sm text-white/60 mt-1">{habit.description}</p>}
-                          {habit.streak > 0 && (
-                            <div className="flex items-center text-xs text-white/70 mt-1">
-                              <Fire size={14} className="text-orange-400 mr-1" />
-                              <span>{habit.streak}-day streak</span>
-                            </div>
-                          )}
-                        </div>
-                        <button
-                          onClick={() => deleteHabit(habit.id)}
-                          className="text-white/40 hover:text-white/80 transition-colors"
-                          disabled={isSubmitting}
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                      <div className="grid grid-cols-7 gap-1">
-                        {weekDays.map((day) => {
-                          const isCompleted = completions[day.dayKey]?.[habit.id] || false
-                          const isToday = day.dayKey === getDayKey(new Date())
-                          const isPast = new Date(day.date) < new Date(new Date().setHours(0, 0, 0, 0))
-                          return (
+                /* Notes Display */
+                <div className="relative h-full">
+                  {notes.map((note) => {
+                    const noteType = NOTE_TYPES[note.type]
+                    return (
+                      <motion.div
+                        key={note.id}
+                        className={`absolute p-4 rounded-lg ${noteType.color} border ${noteType.borderColor} shadow-md max-w-[200px]`}
+                        initial={{ opacity: 0, scale: 0.8 }}
+                        animate={{
+                          opacity: 1,
+                          scale: 1,
+                          x: note.position.x,
+                          y: note.position.y,
+                        }}
+                        transition={{ duration: 0.3 }}
+                        drag
+                        dragConstraints={boardRef}
+                        dragElastic={0.1}
+                        dragMomentum={false}
+                        whileHover={{ scale: 1.02, zIndex: 10 }}
+                        whileTap={{ scale: 0.98 }}
+                        onDragEnd={(e, info) => {
+                          // Calculate new position after drag
+                          const newPosition = {
+                            x: note.position.x + info.offset.x,
+                            y: note.position.y + info.offset.y,
+                          }
+                          // Update note position
+                          updateNotePosition(note.id, newPosition)
+                        }}
+                        style={{
+                          zIndex: 1,
+                          boxShadow: "0 4px 6px rgba(0, 0, 0, 0.1)",
+                        }}
+                      >
+                        {/* Note Header with Type and Actions */}
+                        <div className="flex justify-between items-start mb-2">
+                          <div className="flex items-center gap-1 text-sm opacity-70">
+                            <span>{noteType.emoji}</span>
+                          </div>
+                          <div className="flex gap-1">
                             <button
-                              key={`${habit.id}-${day.dayKey}`}
-                              onClick={() => toggleCompletion(habit.id,habit.habit day.dayKey)}
-                              disabled={isSubmitting}
-                              className={`w-10 h-10 rounded-full flex items-center justify-center transition-all 
-                                ${isCompleted ? "bg-rich-teal text-white" : "bg-white/5 hover:bg-white/10 text-white/40"} 
-                                ${day.isToday ? "ring-2 ring-muted-coral/30" : ""} 
-                                ${isSubmitting ? "cursor-default opacity-80" : "cursor-pointer"}`}
-                              title={isCompleted ? "Completed" : "Not completed"}
+                              onClick={() => startEditingNote(note)}
+                              className="text-white/60 hover:text-white/90 transition-colors"
+                              aria-label="Edit note"
                             >
-                              {isCompleted && <Check size={16} />}
+                              <Edit size={16} />
                             </button>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  </motion.div>
-                ))
+                            <button
+                              onClick={() => confirmDelete(note.id)}
+                              className="text-white/60 hover:text-white/90 transition-colors"
+                              aria-label="Delete note"
+                            >
+                              <X size={16} />
+                            </button>
+                          </div>
+                        </div>
+                        {/* Note Content */}
+                        <p className="whitespace-pre-wrap break-words text-sm">{note.content}</p>
+                        {/* Note Footer with Date */}
+                        <div className="mt-2 text-xs opacity-50">
+                          {note.updatedAt
+                            ? `Updated: ${new Date(note.updatedAt).toLocaleDateString()}`
+                            : new Date(note.createdAt).toLocaleDateString()}
+                        </div>
+                      </motion.div>
+                    )
+                  })}
+                </div>
               )}
-            </AnimatePresence>
+            </div>
           </div>
         </section>
 
+        {/* Edit Note Dialog */}
+        <Dialog open={!!editingNote} onOpenChange={(open) => !open && setEditingNote(null)}>
+          <DialogContent className="sm:max-w-md bg-black border border-white/10 text-white">
+            <DialogHeader>
+              <DialogTitle className="text-xl">Edit Note</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              {/* Edit Content */}
+              <div className="space-y-2">
+                <Label htmlFor="edit-note-content">Note Content</Label>
+                <Textarea
+                  id="edit-note-content"
+                  placeholder="Edit your note..."
+                  value={editedContent}
+                  onChange={(e) => setEditedContent(e.target.value)}
+                  className="min-h-[100px] bg-white/5 border-white/10"
+                />
+              </div>
+              {/* Edit Type */}
+              <div className="space-y-2">
+                <Label>Note Type</Label>
+                <RadioGroup
+                  value={editedType}
+                  onValueChange={(value) => setEditedType(value)}
+                  className="grid grid-cols-2 gap-2"
+                >
+                  {Object.entries(NOTE_TYPES).map(([key, type]) => (
+                    <div
+                      key={key}
+                      className={`flex items-center space-x-2 p-3 rounded-md border ${editedType === key ? type.borderColor : "border-white/10"} ${type.color} transition-all duration-200`}
+                    >
+                      <RadioGroupItem value={key} id={`edit-note-type-${key}`} />
+                      <Label htmlFor={`edit-note-type-${key}`} className="flex items-center gap-2 cursor-pointer">
+                        <span>{type.emoji}</span>
+                        <span className="font-medium">{type.label}</span>
+                      </Label>
+                    </div>
+                  ))}
+                </RadioGroup>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setEditingNote(null)}
+                className="border-white/10 hover:bg-white/10"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={saveEditedNote}
+                disabled={!editedContent.trim()}
+                className="bg-rich-teal hover:bg-rich-teal/90"
+              >
+                Save Changes
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Delete Confirmation Dialog */}
+        <Dialog open={!!noteToDelete} onOpenChange={(open) => !open && setNoteToDelete(null)}>
+          <DialogContent className="sm:max-w-md bg-black border border-white/10 text-white">
+            <DialogHeader>
+              <DialogTitle className="text-xl flex items-center gap-2">
+                <AlertTriangle className="text-yellow-500" size={20} />
+                Confirm Deletion
+              </DialogTitle>
+              <DialogDescription>
+                Are you sure you want to delete this note? This action cannot be undone.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="sm:justify-between">
+              <Button variant="outline" onClick={cancelDelete} className="border-white/10 hover:bg-white/10">
+                Cancel
+              </Button>
+              <Button onClick={deleteNote} className="bg-red-600 hover:bg-red-700">
+                Delete
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
         {/* Tips Section */}
         <section className="py-12 px-4">
-          <div className="container mx-auto max-w-4xl">
+          <div className="container mx-auto">
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               whileInView={{ opacity: 1, scale: 1 }}
               viewport={{ once: true }}
-              className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-rich-teal/20 to-pale-cyan/20 border border-white/10 p-6 md:p-8 text-center"
+              className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-rich-teal/20 to-pale-cyan/20 border border-white/10 p-8 md:p-12"
             >
+              {/* Animated Background */}
               <motion.div
                 animate={{
                   opacity: [0.5, 1, 0.5],
@@ -893,22 +796,54 @@ export default function HabitTrackerPage() {
                 className="absolute top-1/2 right-0 transform -translate-y-1/2 w-96 h-96 bg-rich-teal/20 rounded-full filter blur-3xl"
               />
 
+              {/* Tips Content */}
               <div className="relative z-10">
-                <h2 className="text-2xl font-bold mb-6">Habit Building Tips</h2>
-                <ul className="text-white/80 text-left max-w-2xl mx-auto space-y-2 mb-4">
-                  <li className="flex items-start">
-                    <Check size={18} className="text-rich-teal mr-2 mt-1 flex-shrink-0" />
-                    <span>Start small: Begin with just 1-3 habits to avoid overwhelm</span>
-                  </li>
-                  <li className="flex items-start">
-                    <Check size={18} className="text-rich-teal mr-2 mt-1 flex-shrink-0" />
-                    <span>Be specific: "Meditate for 5 minutes" is better than "Meditate"</span>
-                  </li>
-                  <li className="flex items-start">
-                    <Check size={18} className="text-rich-teal mr-2 mt-1 flex-shrink-0" />
-                    <span>Track daily: Check in every day to maintain your streak</span>
-                  </li>
-                </ul>
+                <h2 className="text-2xl font-bold mb-6">Vision Board Tips</h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Affirmations Tip */}
+                  <div className="bg-white/5 p-4 rounded-xl border border-white/10">
+                    <h3 className="text-lg font-semibold mb-2 flex items-center gap-2">
+                      <MessageSquare size={18} className="text-blue-400" />
+                      Affirmations
+                    </h3>
+                    <p className="text-white/80">
+                      Write positive statements in the present tense as if they're already true. Example: "I am
+                      confident and capable in all situations."
+                    </p>
+                  </div>
+                  {/* Quotes Tip */}
+                  <div className="bg-white/5 p-4 rounded-xl border border-white/10">
+                    <h3 className="text-lg font-semibold mb-2 flex items-center gap-2">
+                      <BookOpen size={18} className="text-green-400" />
+                      Quotes
+                    </h3>
+                    <p className="text-white/80">
+                      Add inspiring quotes that resonate with your goals and values. Include the author if known.
+                    </p>
+                  </div>
+                  {/* Wins Tip */}
+                  <div className="bg-white/5 p-4 rounded-xl border border-white/10">
+                    <h3 className="text-lg font-semibold mb-2 flex items-center gap-2">
+                      <Trophy size={18} className="text-yellow-400" />
+                      Wins & Achievements
+                    </h3>
+                    <p className="text-white/80">
+                      Document your successes, no matter how small. Celebrating wins reinforces positive behavior and
+                      builds confidence.
+                    </p>
+                  </div>
+                  {/* CBT Tip */}
+                  <div className="bg-white/5 p-4 rounded-xl border border-white/10">
+                    <h3 className="text-lg font-semibold mb-2 flex items-center gap-2">
+                      <Brain size={18} className="text-purple-400" />
+                      CBT Prompts
+                    </h3>
+                    <p className="text-white/80">
+                      Create cognitive behavioral therapy prompts to challenge negative thoughts. Example: "What
+                      evidence supports or contradicts this thought?"
+                    </p>
+                  </div>
+                </div>
               </div>
             </motion.div>
           </div>

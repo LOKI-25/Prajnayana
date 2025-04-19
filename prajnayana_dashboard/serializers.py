@@ -114,8 +114,6 @@ class VisionBoardSerializer(serializers.ModelSerializer):
         extra_kwargs = {'user': {'required': False}}
 
     def validate(self, attrs):
-        if attrs.get('category') not in VisionBoardCategory.choices:
-            raise serializers.ValidationError("Invalid category.")
         attrs['user'] = self.context["request"].user
         return attrs
 
