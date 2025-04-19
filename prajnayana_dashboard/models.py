@@ -57,7 +57,7 @@ class QuestionaireUserResponse(models.Model):
 
 class Habits(models.Model):
     habit = models.CharField(max_length=255)
-    user = models.ForeignKey(User,on_delete=models.CASCADE)
+    user = models.ForeignKey(User,on_delete=models.CASCADE,null=True,blank=True)
     description = models.TextField()
 
     def __str__(self):
