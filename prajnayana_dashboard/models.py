@@ -133,7 +133,8 @@ class VisionBoardCategory(models.TextChoices):
     QUOTE = "Quote"
     AFFIRMATION = "Affirmation"
     GOAL = "Goal"
-    PROMPT= "Prompt"
+    CBT= "CBT"
+    WIN="Win"
 
 class VisionBoard(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
