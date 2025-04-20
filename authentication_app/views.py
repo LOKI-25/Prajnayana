@@ -62,8 +62,11 @@ class LoginView(APIView):
     
 
 class UserViewSet(ModelViewSet):
-    queryset = User.objects.all()
     serializer_class = UserSerializer
+
+
+    def get_queryset(self):
+        return User.objects.filter(id=self.request.user.id)
 
     def update(self, request, *args, **kwargs):
         user = self.get_object()
@@ -92,3 +95,5 @@ def get_user(request):
     user = request.user
     serializer = UserSerializer(user)
     return Response(serializer.data, status=status.HTTP_200_OK)
+
+
