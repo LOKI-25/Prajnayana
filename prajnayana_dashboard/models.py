@@ -68,6 +68,8 @@ class HabitTracking(models.Model):
     habit = models.ForeignKey(Habits,on_delete=models.CASCADE)
     date = models.DateField(default=timezone.now)
     is_done = models.BooleanField(default=False)
+    user = models.ForeignKey(User,on_delete=models.CASCADE,null=True,blank=True)
+
 
 
     def __str__(self):

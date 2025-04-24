@@ -71,9 +71,9 @@ class HabitTrackingViewSet(viewsets.ModelViewSet):
         search = self.request.GET.get('search', None)
         if search:
             search = datetime.datetime.strptime(search, '%Y-%m-%d').date()
-            return HabitTracking.objects.filter(habit__user=self.request.user,date=search)
+            return HabitTracking.objects.filter(user=self.request.user,date=search)
         
-        return HabitTracking.objects.filter(habit__user=self.request.user)
+        return HabitTracking.objects.filter(user=self.request.user)
 
 class JournalEntryViewSet(viewsets.ModelViewSet):
     serializer_class = JournalEntrySerializer

@@ -71,11 +71,15 @@ class HabitTrackingSerializer(serializers.ModelSerializer):
 
         if habit.user is not None and habit.user != self.context["request"].user:
             raise serializers.ValidationError("You can only track habits that belong to you.")
+        
+        if attrs.get("user") is None:
+            attrs["user"] = self.context["request"].user
 
         attrs["habit"] = habit
         return attrs
 
     def create(self, validated_data):
+        validated_data["user"] = self.context["request"].user
         return super().create(validated_data)
     
 
