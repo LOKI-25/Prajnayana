@@ -68,7 +68,6 @@ class HabitTrackingSerializer(serializers.ModelSerializer):
 
         if not habit:
             raise serializers.ValidationError("Habit not found.")
-        import pdb;pdb.set_trace()
 
         if habit.user is not None and habit.user != self.context["request"].user:
             raise serializers.ValidationError("You can only track habits that belong to you.")
