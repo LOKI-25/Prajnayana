@@ -69,7 +69,7 @@ class HabitTrackingSerializer(serializers.ModelSerializer):
         if not habit:
             raise serializers.ValidationError("Habit not found.")
 
-        if habit.user != self.context["request"].user:
+        if habit.user is None or habit.user != self.context["request"].user:
             raise serializers.ValidationError("You can only track habits that belong to you.")
 
         attrs["habit"] = habit
