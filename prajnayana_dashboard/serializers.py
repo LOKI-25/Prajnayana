@@ -81,7 +81,7 @@ class HabitTrackingSerializer(serializers.ModelSerializer):
 
 class JournalEntrySerializer(serializers.ModelSerializer):
     user = serializers.StringRelatedField()
-    date = serializers.DateField(format="%Y-%m-%d", required=False)
+    date = serializers.SerializerMethodField()
     class Meta:
         model = JournalEntry
         fields = ["id", "user", "date", "timestamp", "mood", "content"]
@@ -90,6 +90,9 @@ class JournalEntrySerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         attrs['user'] = self.context["request"].user
         return attrs
+    
+    def get_date(self, obj):
+        return obj.date if obj.date else None
 
     
 class KnowledgeHubSerializer(serializers.ModelSerializer):
